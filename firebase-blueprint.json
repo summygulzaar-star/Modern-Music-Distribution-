@@ -1,0 +1,106 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile and financial data",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "role": { "type": "string" },
+        "walletBalance": { "type": "number" },
+        "status": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["email", "role", "walletBalance"]
+    },
+    "Artist": {
+      "title": "Artist",
+      "description": "Artist profile linked to a user",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "name": { "type": "string" },
+        "bio": { "type": "string" },
+        "imageUrl": { "type": "string" }
+      },
+      "required": ["userId", "name"]
+    },
+    "Label": {
+      "title": "Label",
+      "description": "Music label linked to a user",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "name": { "type": "string" },
+        "logoUrl": { "type": "string" }
+      },
+      "required": ["userId", "name"]
+    },
+    "Release": {
+      "title": "Release",
+      "description": "Song or Album release data",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "artist": { "type": "string" },
+        "featuring": { "type": "string" },
+        "genre": { "type": "string" },
+        "language": { "type": "string" },
+        "copyright": { "type": "string" },
+        "label": { "type": "string" },
+        "releaseDate": { "type": "string" },
+        "audioUrl": { "type": "string" },
+        "coverUrl": { "type": "string" },
+        "isrc": { "type": "string" },
+        "upc": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "approved", "correction", "live", "rejected", "takedown"] },
+        "adminNotes": { "type": "string" },
+        "platformLinks": { "type": "object" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "title", "artist", "status"]
+    },
+    "Transaction": {
+      "title": "Transaction",
+      "description": "Wallet transaction (withdrawal or royalty payment)",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "amount": { "type": "number" },
+        "type": { "type": "string", "enum": ["earning", "withdrawal"] },
+        "status": { "type": "string", "enum": ["pending", "completed", "failed"] },
+        "paymentMethod": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "amount", "type", "status"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profile data"
+    },
+    "/artists/{artistId}": {
+      "schema": "Artist",
+      "description": "Artist profiles"
+    },
+    "/labels/{labelId}": {
+      "schema": "Label",
+      "description": "Music labels"
+    },
+    "/releases/{releaseId}": {
+      "schema": "Release",
+      "description": "Music releases and metadata"
+    },
+    "/transactions/{transactionId}": {
+      "schema": "Transaction",
+      "description": "Financial transaction records"
+    },
+    "/admins/{adminId}": {
+      "schema": { "type": "object", "properties": { "uid": { "type": "string" } } },
+      "description": "List of admin UIDs"
+    }
+  }
+}
