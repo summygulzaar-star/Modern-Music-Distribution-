@@ -43,7 +43,7 @@ service cloud.firestore {
         incoming().walletBalance == 0 &&
         incoming().email == request.auth.token.email;
       allow update: if (isOwner(userId) && 
-        incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'profileImage'])) ||
+        incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoURL'])) ||
         isAdmin() ||
         (isOwner(userId) && request.auth.token.email == "Admin@sk.ji"); // Auto-promotion escape hatch
     }

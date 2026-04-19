@@ -73,11 +73,11 @@ const PLATFORMS = [
   { name: "YouTube Music", logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6a/Youtube_Music_icon.svg/1024px-Youtube_Music_icon.svg.png" },
   { name: "Instagram", logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e7/Instagram_logo_2016.svg/1024px-Instagram_logo_2016.svg.png" },
   { name: "JioSaavn", logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e6/JioSaavn_Logo.svg/1024px-JioSaavn_Logo.svg.png" },
-  { name: "Gaana", logo: "https://logodix.com/logo/2115668.png" },
+  { name: "Gaana", logo: "https://upload.wikimedia.org/wikipedia/en/c/ca/Gaana_Logo.png" },
   { name: "Facebook", logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/0/05/Facebook_Logo_%282019%29.png/1024px-Facebook_Logo_%282019%29.png" },
   { name: "Snapchat", logo: "https://upload.wikimedia.org/wikipedia/en/thumb/c/c4/Snapchat_logo.svg/1024px-Snapchat_logo.svg.png" },
   { name: "Amazon Music", logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/8/80/Amazon_Music_logo.svg/1024px-Amazon_Music_logo.svg.png" },
-  { name: "Wynk Music", logo: "https://pbs.twimg.com/profile_images/1169196324204482561/NpxKz8I6_400x400.png" },
+  { name: "Wynk Music", logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/1/1d/Wynk_Music_Logo.png/1024px-Wynk_Music_Logo.png" },
 ];
 
 export default function Upload() {
@@ -85,6 +85,7 @@ export default function Upload() {
   const navigate = useNavigate();
   const [step, setStep] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0, fileName: "" });
   const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>(PLATFORMS.map(p => p.name));
   
@@ -175,7 +176,8 @@ export default function Upload() {
   const onError = (errors: any) => {
     console.error(errors);
     const firstError = Object.values(errors)[0] as any;
-    alert(`Validation Error: ${firstError?.message || 'Please check all fields'}`);
+    setFormError(`Validation Error: ${firstError?.message || 'Please check all fields'}`);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const uploadFileWithProgress = (file: File, path: string): Promise<string> => {
@@ -203,13 +205,14 @@ export default function Upload() {
   };
 
   const onSubmit = async (data: any) => {
+    setFormError(null);
     if (!audioFile) {
-      alert("Please upload an audio file first.");
+      setFormError("Please upload an audio file first.");
       setStep(4);
       return;
     }
     if (!coverFile) {
-      alert("Please upload cover art first.");
+      setFormError("Please upload cover art first.");
       setStep(5);
       return;
     }
@@ -219,22 +222,30 @@ export default function Upload() {
     try {
       // 1. Upload Cover to Firebase
       const coverExt = coverFile.name.split('.').pop();
-      const coverUrl = await uploadFileWithProgress(coverFile, `${user.uid}/covers/${Date.now()}.${coverExt}`);
+      const coverUrl = await uploadFileWithProgress(coverFile, `users/${user.uid}/covers/${Date.now()}.${coverExt}`);
 
       // 2. Upload Audio to Firebase
       const audioExt = audioFile.name.split('.').pop();
-      const audioUrl = await uploadFileWithProgress(audioFile, `${user.uid}/audio/${Date.now()}.${audioExt}`);
+      const audioUrl = await uploadFileWithProgress(audioFile, `users/${user.uid}/audio/${Date.now()}.${audioExt}`);
 
       // 3. Save to Firestore
       await addDoc(collection(db, "releases"), {
-        ...data,
+        userId: user.uid,
         title: data.songName,
         artist: data.singerName,
-        userId: user.uid,
+        genre: data.primaryGenre, // Match blueprint
+        secondaryGenre: data.secondaryGenre,
+        language: data.language,
+        copyright: data.copyright,
+        label: data.labelName, // Match blueprint
+        releaseDate: data.releaseDate,
+        releaseTime: data.releaseTime,
         audioUrl,
         coverUrl,
         status: "pending",
         platforms: selectedPlatforms,
+        // Keep original data for reference
+        metadata: data,
         createdAt: new Date().toISOString()
       });
 
@@ -251,7 +262,8 @@ export default function Upload() {
       } else if (err.message) {
         errorMessage = err.message;
       }
-      alert(`Critical Upload Failure: ${errorMessage}`);
+      setFormError(`Critical Upload Failure: ${errorMessage}`);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     } finally {
       setIsUploading(false);
       setUploadProgress({ current: 0, total: 0, fileName: "" });
@@ -315,6 +327,29 @@ export default function Upload() {
             </div>
          ))}
       </div>
+
+      {/* Form Error Message */}
+      <AnimatePresence>
+        {formError && (
+          <motion.div 
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="mb-8 p-6 bg-rose-50 border-2 border-rose-100 rounded-[2rem] flex items-center gap-4 text-rose-600"
+          >
+            <div className="w-12 h-12 bg-rose-100 rounded-[1rem] flex items-center justify-center shrink-0">
+               <ShieldAlert className="w-6 h-6" />
+            </div>
+            <div className="flex-1">
+               <p className="text-xs font-black uppercase tracking-widest mb-1">Transmission Error</p>
+               <p className="text-[11px] font-bold opacity-80">{formError}</p>
+            </div>
+            <button onClick={() => setFormError(null)} className="p-2 hover:bg-rose-200 rounded-full transition-colors">
+               <X className="w-4 h-4" />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <div className="bg-white rounded-[4rem] shadow-2xl p-16 border border-slate-50 relative overflow-hidden">
         {isUploading && (
