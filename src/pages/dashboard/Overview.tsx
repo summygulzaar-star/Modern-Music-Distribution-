@@ -18,25 +18,17 @@ import { Link } from "react-router-dom";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { motion } from "motion/react";
 
-const DATA = [
-  { name: 'Mon', revenue: 400 },
-  { name: 'Tue', revenue: 300 },
-  { name: 'Wed', revenue: 600 },
-  { name: 'Thu', revenue: 800 },
-  { name: 'Fri', revenue: 700 },
-  { name: 'Sat', revenue: 1100 },
-  { name: 'Sun', revenue: 900 },
-];
-
 export default function Overview() {
   const { user, profile, isAdmin } = useAuth();
   const [recentReleases, setRecentReleases] = useState<any[]>([]);
   const [stats, setStats] = useState({ total: 0, live: 0, pending: 0, rejected: 0 });
+  const [chartData, setChartData] = useState<any[]>([]);
 
   useEffect(() => {
     const fetchData = async () => {
       if (!user) return;
       
+      // Fetch Recent Releases
       const q = query(
         collection(db, "releases"), 
         where("userId", "==", user.uid),
@@ -47,6 +39,7 @@ export default function Overview() {
       const snap = await getDocs(q);
       setRecentReleases(snap.docs.map(d => ({ id: d.id, ...d.data() })));
 
+      // Fetch Stats
       const allSnap = await getDocs(query(collection(db, "releases"), where("userId", "==", user.uid)));
       const allData = allSnap.docs.map(d => d.data());
       
@@ -56,6 +49,38 @@ export default function Overview() {
         pending: allData.filter((r: any) => r.status === 'pending' || r.status === 'approved').length,
         rejected: allData.filter((r: any) => r.status === 'rejected').length
       });
+
+      // Fetch Earnings for Chart
+      const tSnap = await getDocs(query(
+        collection(db, "transactions"),
+        where("userId", "==", user.uid),
+        where("type", "==", "earning"),
+        orderBy("createdAt", "asc")
+      ));
+
+      const earningsByDay: Record<string, number> = {};
+      const last7Days = Array.from({ length: 7 }, (_, i) => {
+        const d = new Date();
+        d.setDate(d.getDate() - i);
+        return d.toLocaleDateString('en-US', { weekday: 'short' });
+      }).reverse();
+
+      last7Days.forEach(day => earningsByDay[day] = 0);
+
+      tSnap.docs.forEach(doc => {
+        const data = doc.data();
+        const date = new Date(data.createdAt).toLocaleDateString('en-US', { weekday: 'short' });
+        if (earningsByDay[date] !== undefined) {
+          earningsByDay[date] += data.amount;
+        }
+      });
+
+      const formattedChart = last7Days.map(day => ({
+        name: day,
+        revenue: earningsByDay[day]
+      }));
+
+      setChartData(formattedChart);
     };
     fetchData();
   }, [user]);
@@ -86,10 +111,10 @@ export default function Overview() {
       {/* Welcome & Earnings Header */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-8">
         <div>
-          <h1 className="text-5xl font-black font-display tracking-tight mb-2 uppercase flex items-center gap-4">
+          <h1 className="text-5xl font-black font-display tracking-tight mb-2 uppercase flex items-center gap-4 text-left">
             Welcome, <span className="text-brand-blue">{profile?.displayName?.split(" ")[0]}</span>
           </h1>
-          <p className="text-slate-400 font-medium">Your global music empire is scaling. Here's your mission control.</p>
+          <p className="text-slate-400 font-medium text-left">Your global music empire is scaling. Here's your mission control.</p>
         </div>
         
         <div className="bg-white p-8 rounded-[3.5rem] shadow-2xl border border-slate-100 flex items-center gap-8 group">
@@ -152,7 +177,7 @@ export default function Overview() {
             
             <div className="h-[220px] w-full">
                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={DATA}>
+                  <AreaChart data={chartData}>
                     <defs>
                       <linearGradient id="miniChart" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="5%" stopColor="#0066FF" stopOpacity={0.15}/>
@@ -160,8 +185,8 @@ export default function Overview() {
                       </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                    <XAxis dataKey="name" hide />
-                    <YAxis hide domain={['dataMin', 'dataMax + 100']} />
+                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 10, fontWeight: 700}} />
+                    <YAxis hide domain={['dataMin', 'dataMax + 10']} />
                     <Tooltip 
                       contentStyle={{ backgroundColor: '#fff', borderRadius: '16px', border: 'none', boxShadow: '0 10px 30px rgba(0,0,0,0.1)' }}
                       labelStyle={{ fontWeight: 800, color: '#111' }}

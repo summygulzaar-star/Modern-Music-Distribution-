@@ -39,10 +39,14 @@ export default function AdminReview() {
   const platforms = [
     { id: 'spotify', name: 'Spotify' },
     { id: 'apple', name: 'Apple Music' },
-    { id: 'jio', name: 'JioSaavn' },
-    { id: 'wynk', name: 'Wynk' },
     { id: 'yt', name: 'YouTube Music' },
-    { id: 'amazon', name: 'Amazon' }
+    { id: 'instagram', name: 'Instagram' },
+    { id: 'jio', name: 'JioSaavn' },
+    { id: 'gaana', name: 'Gaana' },
+    { id: 'facebook', name: 'Facebook' },
+    { id: 'snapchat', name: 'Snapchat' },
+    { id: 'amazon', name: 'Amazon Music' },
+    { id: 'wynk', name: 'Wynk Music' }
   ];
 
   useEffect(() => {

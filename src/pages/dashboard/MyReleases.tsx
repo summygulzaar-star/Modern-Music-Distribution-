@@ -136,7 +136,7 @@ export default function MyReleases() {
                           to={`/dashboard/releases/${release.id}`}
                           className="w-full py-4 bg-white rounded-2xl text-slate-950 font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-3 hover:bg-brand-blue hover:text-white transition-all transform translate-y-4 group-hover:translate-y-0"
                         >
-                           Manage Release <ChevronRight className="w-4 h-4" />
+                           Track Assets <ChevronRight className="w-4 h-4" />
                         </Link>
                         <div className="flex gap-3 transform translate-y-8 group-hover:translate-y-0 transition-transform delay-75">
                            <button className="flex-1 py-3 bg-white/10 backdrop-blur-md text-white border border-white/20 rounded-xl text-[9px] font-bold uppercase tracking-widest hover:bg-white/20 transition-all">Edit</button>

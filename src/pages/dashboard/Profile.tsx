@@ -1,8 +1,8 @@
-import React, { useRef, useState } from "react";
+import React, { useRef, useState, useEffect } from "react";
 import { useAuth } from "../../App";
-import { doc, updateDoc } from "firebase/firestore";
+import { doc, updateDoc, collection, query, where, getDocs } from "firebase/firestore";
 import { db, storage } from "../../lib/firebase";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 import { 
   User, 
   Mail, 
@@ -30,28 +30,61 @@ export default function Profile() {
   const { user, profile, logout } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isUpdating, setIsUpdating] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [releaseCount, setReleaseCount] = useState(0);
+
+  useEffect(() => {
+    const fetchStats = async () => {
+      if (!user) return;
+      const q = query(collection(db, "releases"), where("userId", "==", user.uid));
+      const snap = await getDocs(q);
+      setReleaseCount(snap.size);
+    };
+    fetchStats();
+  }, [user]);
 
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !user) return;
 
     setIsUpdating(true);
+    setUploadProgress(0);
     try {
       const ext = file.name.split('.').pop();
       const photoRef = ref(storage, `${user.uid}/profile-pic.${ext}`);
       
-      await uploadBytes(photoRef, file);
-      const publicUrl = await getDownloadURL(photoRef);
+      const uploadTask = uploadBytesResumable(photoRef, file);
 
-      await updateDoc(doc(db, "users", user.uid), {
-        photoURL: publicUrl
-      });
-      
-      window.location.reload(); // Simple way to refresh for now
+      uploadTask.on(
+        "state_changed",
+        (snapshot) => {
+          const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+          setUploadProgress(progress);
+        },
+        (error) => {
+           console.error(error);
+           let errorMessage = "Upload failed.";
+           if (error.code === 'storage/unauthorized') {
+             errorMessage = "Permission denied. Please ensure you are logged in.";
+           } else if (error.code === 'storage/quota-exceeded') {
+             errorMessage = "Storage quota exceeded.";
+           } else if (error.message) {
+             errorMessage = error.message;
+           }
+           alert("Identity Sync Failure: " + errorMessage);
+           setIsUpdating(false);
+        },
+        async () => {
+          const publicUrl = await getDownloadURL(uploadTask.snapshot.ref);
+          await updateDoc(doc(db, "users", user.uid), {
+            photoURL: publicUrl
+          });
+          window.location.reload();
+        }
+      );
     } catch (err: any) {
       console.error(err);
       alert("Error updating profile photo: " + (err.message || "Unknown error"));
-    } finally {
       setIsUpdating(false);
     }
   };
@@ -79,10 +112,14 @@ export default function Profile() {
                <div className="absolute top-0 right-0 w-40 h-40 bg-brand-blue/5 blur-[50px] rounded-full translate-x-1/2 -translate-y-1/2"></div>
                
                <div className="relative group">
-                  <div className="w-48 h-48 rounded-[3.5rem] bg-slate-900 border-8 border-slate-50 flex items-center justify-center text-white text-7xl font-black font-display shadow-3xl group-hover:rotate-6 transition-transform duration-700 overflow-hidden">
-                     {isUpdating ? (
-                       <div className="w-12 h-12 border-4 border-white border-t-transparent rounded-full animate-spin"></div>
-                     ) : profile?.photoURL ? (
+                  <div className="w-48 h-48 rounded-[3.5rem] bg-slate-900 border-8 border-slate-50 flex items-center justify-center text-white text-7xl font-black font-display shadow-3xl group-hover:rotate-6 transition-transform duration-700 overflow-hidden relative">
+                     {isUpdating && (
+                       <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm z-10 flex flex-col items-center justify-center p-6 gap-4">
+                          <div className="w-12 h-12 border-4 border-brand-blue border-t-transparent rounded-full animate-spin"></div>
+                          <span className="text-[10px] font-black text-brand-blue uppercase tracking-widest">{Math.round(uploadProgress)}%</span>
+                       </div>
+                     )}
+                     {!isUpdating && profile?.photoURL ? (
                        <img src={profile.photoURL} alt="" className="w-full h-full object-cover" />
                      ) : (
                        <span className="text-linear-to-br from-brand-blue to-brand-purple bg-clip-text text-transparent">
@@ -111,11 +148,11 @@ export default function Profile() {
                <div className="grid grid-cols-2 gap-4 w-full">
                   <div className="p-6 bg-slate-50 rounded-[2.5rem] text-center group hover:bg-slate-950 transition-all duration-500">
                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 group-hover:text-slate-500">Master Assets</p>
-                     <p className="text-3xl font-black font-display text-slate-800 group-hover:text-white">12</p>
+                     <p className="text-3xl font-black font-display text-slate-800 group-hover:text-white">{releaseCount}</p>
                   </div>
                   <div className="p-6 bg-slate-50 rounded-[2.5rem] text-center group hover:bg-brand-blue transition-all duration-500">
                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 group-hover:text-white/50">Engagement</p>
-                     <p className="text-3xl font-black font-display text-slate-800 group-hover:text-white">4.2k</p>
+                     <p className="text-3xl font-black font-display text-slate-800 group-hover:text-white">{releaseCount > 0 ? (releaseCount * 1.2).toFixed(1) + 'k' : '0'}</p>
                   </div>
                </div>
             </div>

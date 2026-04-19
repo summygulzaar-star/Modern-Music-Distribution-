@@ -18,6 +18,7 @@ import Labels from "./pages/dashboard/Labels";
 import ContentID from "./pages/dashboard/ContentID";
 import OACRequest from "./pages/dashboard/OACRequest";
 import Reports from "./pages/dashboard/Reports";
+import AssetView from "./pages/dashboard/AssetView";
 import AdminLayout from "./components/AdminLayout";
 import AdminHome from "./pages/admin/AdminHome";
 import AdminUsers from "./pages/admin/AdminUsers";
@@ -134,6 +135,7 @@ export default function App() {
             <Route path="content-id" element={<ContentID />} />
             <Route path="oac" element={<OACRequest />} />
             <Route path="reports" element={<Reports />} />
+            <Route path="releases/:id" element={<AssetView />} />
             <Route path="profile" element={<Profile />} />
           </Route>
 

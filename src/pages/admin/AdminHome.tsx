@@ -21,43 +21,81 @@ import { cn, formatCurrency } from "../../lib/utils";
 import { motion } from "motion/react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
 
-const CHART_DATA = [
-  { name: 'Jan', uploads: 400, revenue: 2400 },
-  { name: 'Feb', uploads: 300, revenue: 1398 },
-  { name: 'Mar', uploads: 600, revenue: 9800 },
-  { name: 'Apr', uploads: 800, revenue: 3908 },
-  { name: 'May', uploads: 500, revenue: 4800 },
-  { name: 'Jun', uploads: 900, revenue: 3800 },
-];
-
 export default function AdminHome() {
   const [stats, setStats] = useState({
     users: 0,
     totalReleases: 0,
     pending: 0,
     approved: 0,
-    revenue: 124500
+    revenue: 0,
+    liquidation: 0,
+    pendingOAC: 0,
+    pendingCID: 0,
+    supportVol: 0
   });
+  const [revenueChart, setRevenueChart] = useState<any[]>([]);
+  const [velocityChart, setVelocityChart] = useState<any[]>([]);
   const [queue, setQueue] = useState<any[]>([]);
 
   useEffect(() => {
     const fetchAdminStats = async () => {
       const uSnap = await getDocs(collection(db, "users"));
       const rSnap = await getDocs(collection(db, "releases"));
-      const rData = rSnap.docs.map(d => d.data());
+      const rData = rSnap.docs.map(d => ({...d.data(), createdAt: d.data().createdAt}));
       
+      const tSnap = await getDocs(collection(db, "transactions"));
+      const tData = tSnap.docs.map(d => d.data());
+
       const oacSnap = await getDocs(collection(db, "oac_requests"));
       const cidSnap = await getDocs(collection(db, "content_id_requests"));
 
-      setStats(prev => ({
-        ...prev,
+      const totalRevenue = tData
+        .filter(t => t.type === 'earning')
+        .reduce((sum, t) => sum + (t.amount || 0), 0);
+
+      const totalLiquidation = tData
+        .filter(t => t.type === 'withdrawal' && t.status === 'pending')
+        .reduce((sum, t) => sum + (t.amount || 0), 0);
+
+      setStats({
         users: uSnap.size,
         totalReleases: rSnap.size,
-        pending: rData.filter(r => r.status === 'pending').length,
-        approved: rData.filter(r => r.status === 'approved' || r.status === 'live').length,
+        pending: rData.filter(r => (r as any).status === 'pending').length,
+        approved: rData.filter(r => (r as any).status === 'approved' || (r as any).status === 'live').length,
+        revenue: totalRevenue,
+        liquidation: totalLiquidation,
         pendingOAC: oacSnap.size,
-        pendingCID: cidSnap.size
-      }));
+        pendingCID: cidSnap.size,
+        supportVol: 0 // Placeholder until support collection is active
+      });
+
+      // Chart Data Generation
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      const currentMonth = new Date().getMonth();
+      const last6Months = Array.from({length: 6}, (_, i) => {
+        const mIdx = (currentMonth - i + 12) % 12;
+        return months[mIdx];
+      }).reverse();
+
+      const revByMonth: Record<string, number> = {};
+      const upByMonth: Record<string, number> = {};
+      last6Months.forEach(m => {
+        revByMonth[m] = 0;
+        upByMonth[m] = 0;
+      });
+
+      tData.filter(t => t.type === 'earning').forEach(t => {
+        const m = months[new Date(t.createdAt).getMonth()];
+        if (revByMonth[m] !== undefined) revByMonth[m] += t.amount;
+      });
+
+      rData.forEach(r => {
+        const m = months[new Date((r as any).createdAt).getMonth()];
+        if (upByMonth[m] !== undefined) upByMonth[m] += 1;
+      });
+
+      setRevenueChart(last6Months.map(m => ({ name: m, revenue: revByMonth[m] })));
+      setVelocityChart(last6Months.map(m => ({ name: m, uploads: upByMonth[m] })));
 
       const q = query(
         collection(db, "releases"), 
@@ -74,8 +112,8 @@ export default function AdminHome() {
     <div className="space-y-12">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-6xl font-black font-display tracking-tight mb-2 uppercase italic">Mission <span className="text-brand-purple">Control</span></h1>
-          <p className="text-slate-500 font-medium tracking-wide">Enterprise identity & asset orchestration engine.</p>
+          <h1 className="text-6xl font-black font-display tracking-tight mb-2 uppercase italic text-left">Mission <span className="text-brand-purple">Control</span></h1>
+          <p className="text-slate-500 font-medium tracking-wide text-left text-xs uppercase">Enterprise identity & asset orchestration engine.</p>
         </div>
         <div className="flex gap-4">
            <div className="px-6 py-3 bg-slate-800/50 rounded-2xl border border-slate-700 flex items-center gap-3">
@@ -92,10 +130,10 @@ export default function AdminHome() {
           { label: "Pending Reviews", val: stats.pending, icon: Clock, color: "text-amber-500", bg: "bg-amber-500/10" },
           { label: "Active Live Assets", val: stats.approved, icon: Music, color: "text-emerald-500", bg: "bg-emerald-500/10" },
           { label: "Gross Platform Revenue", val: formatCurrency(stats.revenue), icon: TrendingUp, color: "text-brand-purple", bg: "bg-brand-purple/10" },
-          { label: "Pending Liquidations", val: "₹1,24,000", icon: Wallet, color: "text-rose-500", bg: "bg-rose-500/10" },
-          { label: "OAC Applications", val: (stats as any).pendingOAC || 0, icon: Youtube, color: "text-rose-600", bg: "bg-rose-600/10" },
-          { label: "CID Requests", val: (stats as any).pendingCID || 0, icon: Fingerprint, color: "text-cyan-500", bg: "bg-cyan-500/10" },
-          { label: "Support Vol", val: 8, icon: MessageSquare, color: "text-indigo-400", bg: "bg-indigo-400/10" },
+          { label: "Pending Liquidations", val: formatCurrency(stats.liquidation), icon: Wallet, color: "text-rose-500", bg: "bg-rose-500/10" },
+          { label: "OAC Applications", val: stats.pendingOAC, icon: Youtube, color: "text-rose-600", bg: "bg-rose-600/10" },
+          { label: "CID Requests", val: stats.pendingCID, icon: Fingerprint, color: "text-cyan-500", bg: "bg-cyan-500/10" },
+          { label: "Support Vol", val: stats.supportVol, icon: MessageSquare, color: "text-indigo-400", bg: "bg-indigo-400/10" },
         ].map((s, i) => (
           <motion.div 
             key={i}
@@ -108,7 +146,7 @@ export default function AdminHome() {
             <div className={cn("w-12 h-12 rounded-xl flex items-center justify-center mb-6", s.bg)}>
               <s.icon className={cn("w-6 h-6", s.color)} />
             </div>
-            <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-500 mb-2">{s.label}</p>
+            <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-500 mb-2 truncate">{s.label}</p>
             <h3 className="text-3xl font-black font-display tracking-tighter text-white">{s.val}</h3>
           </motion.div>
         ))}
@@ -121,7 +159,7 @@ export default function AdminHome() {
             </h3>
             <div className="h-[300px] w-full mt-6">
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={CHART_DATA}>
+                <AreaChart data={revenueChart}>
                   <defs>
                     <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.3}/>
@@ -147,7 +185,7 @@ export default function AdminHome() {
             </h3>
             <div className="h-[300px] w-full mt-6">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={CHART_DATA}>
+                <BarChart data={velocityChart}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1e293b" />
                   <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#475569', fontSize: 10, fontWeight: 800}} />
                   <YAxis axisLine={false} tickLine={false} tick={{fill: '#475569', fontSize: 10}} />

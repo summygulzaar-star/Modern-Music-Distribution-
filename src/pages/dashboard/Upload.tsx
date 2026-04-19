@@ -4,7 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { motion, AnimatePresence } from "motion/react";
 import { db, storage } from "../../lib/firebase";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 import { collection, addDoc, getDocs, query, where } from "firebase/firestore";
 import { useAuth } from "../../App";
 import { useNavigate } from "react-router-dom";
@@ -68,16 +68,16 @@ const STEPS = [
 const LANGUAGES = ["Hindi", "Bengali", "Marathi", "Telugu", "Tamil", "Gujarati", "Urdu", "Kannada", "Odia", "Malayalam", "Punjabi", "Assamese", "Maithili", "Sanskrit", "English"];
 const GENRES = ["Pop", "HipHop", "Classical", "Folk", "EDM", "Jazz", "Rock", "Devotional", "Bollywood", "Lo-Fi", "Indie"];
 const PLATFORMS = [
-  { name: "Spotify", logo: "https://play-lh.googleusercontent.com/P2VxaUCag1SJEncf3S7P8-AYOKM6D3uUfN_7N6mS9ZfI6W9S_P6E-m_0l1l6f_5_8_W=w240-h480-rw" },
-  { name: "Apple Music", logo: "https://play-lh.googleusercontent.com/yS7S9m65S0Tq_0083t4xW8H0e-h4E3_7_u07_x0_0_X_X_X_X_X_X_X=w240-h480-rw" },
-  { name: "YouTube Music", logo: "https://play-lh.googleusercontent.com/I6S-3o6_G1_G1_G1_G1_G1_G1_G1_G1_G1_G1_G1=w240-h480-rw" },
-  { name: "Instagram", logo: "https://play-lh.googleusercontent.com/Wpw98a96_G1_G1_G1_G1_G1_G1_G1_G1_G1_G1_G1=w240-h480-rw" },
-  { name: "JioSaavn", logo: "https://play-lh.googleusercontent.com/d_G1_G1_G1_G1_G1_G1_G1_G1_G1_G1_G1=w240-h480-rw" },
-  { name: "Gaana", logo: "https://play-lh.googleusercontent.com/7_G1_G1_G1_G1_G1_G1_G1_G1_G1_G1_G1=w240-h480-rw" },
-  { name: "Facebook", logo: "https://play-lh.googleusercontent.com/8_G1_G1_G1_G1_G1_G1_G1_G1_G1_G1_G1=w240-h480-rw" },
-  { name: "Snapchat", logo: "https://play-lh.googleusercontent.com/9_G1_G1_G1_G1_G1_G1_G1_G1_G1_G1_G1=w240-h480-rw" },
-  { name: "Amazon Music", logo: "https://play-lh.googleusercontent.com/A_G1_G1_G1_G1_G1_G1_G1_G1_G1_G1_G1=w240-h480-rw" },
-  { name: "Wynk Music", logo: "https://play-lh.googleusercontent.com/B_G1_G1_G1_G1_G1_G1_G1_G1_G1_G1_G1=w240-h480-rw" },
+  { name: "Spotify", logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/1/19/Spotify_logo_without_text.svg/1024px-Spotify_logo_without_text.svg.png" },
+  { name: "Apple Music", logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/2/2a/Apple_Music_logo.svg/1024px-Apple_Music_logo.svg.png" },
+  { name: "YouTube Music", logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6a/Youtube_Music_icon.svg/1024px-Youtube_Music_icon.svg.png" },
+  { name: "Instagram", logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e7/Instagram_logo_2016.svg/1024px-Instagram_logo_2016.svg.png" },
+  { name: "JioSaavn", logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e6/JioSaavn_Logo.svg/1024px-JioSaavn_Logo.svg.png" },
+  { name: "Gaana", logo: "https://logodix.com/logo/2115668.png" },
+  { name: "Facebook", logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/0/05/Facebook_Logo_%282019%29.png/1024px-Facebook_Logo_%282019%29.png" },
+  { name: "Snapchat", logo: "https://upload.wikimedia.org/wikipedia/en/thumb/c/c4/Snapchat_logo.svg/1024px-Snapchat_logo.svg.png" },
+  { name: "Amazon Music", logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/8/80/Amazon_Music_logo.svg/1024px-Amazon_Music_logo.svg.png" },
+  { name: "Wynk Music", logo: "https://pbs.twimg.com/profile_images/1169196324204482561/NpxKz8I6_400x400.png" },
 ];
 
 export default function Upload() {
@@ -85,6 +85,7 @@ export default function Upload() {
   const navigate = useNavigate();
   const [step, setStep] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0, fileName: "" });
   const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>(PLATFORMS.map(p => p.name));
   
   const [audioFile, setAudioFile] = useState<File | null>(null);
@@ -171,26 +172,64 @@ export default function Upload() {
     }
   };
 
+  const onError = (errors: any) => {
+    console.error(errors);
+    const firstError = Object.values(errors)[0] as any;
+    alert(`Validation Error: ${firstError?.message || 'Please check all fields'}`);
+  };
+
+  const uploadFileWithProgress = (file: File, path: string): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const storageRef = ref(storage, path);
+      const uploadTask = uploadBytesResumable(storageRef, file);
+
+      uploadTask.on(
+        "state_changed",
+        (snapshot) => {
+          const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+          setUploadProgress(prev => ({ 
+            ...prev, 
+            current: progress,
+            fileName: file.name
+          }));
+        },
+        (error) => reject(error),
+        async () => {
+          const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+          resolve(downloadURL);
+        }
+      );
+    });
+  };
+
   const onSubmit = async (data: any) => {
-    if (!audioFile || !coverFile || !user) return;
+    if (!audioFile) {
+      alert("Please upload an audio file first.");
+      setStep(4);
+      return;
+    }
+    if (!coverFile) {
+      alert("Please upload cover art first.");
+      setStep(5);
+      return;
+    }
+    if (!user) return;
     
     setIsUploading(true);
     try {
       // 1. Upload Cover to Firebase
       const coverExt = coverFile.name.split('.').pop();
-      const coverRef = ref(storage, `${user.uid}/covers/${Date.now()}.${coverExt}`);
-      await uploadBytes(coverRef, coverFile);
-      const coverUrl = await getDownloadURL(coverRef);
+      const coverUrl = await uploadFileWithProgress(coverFile, `${user.uid}/covers/${Date.now()}.${coverExt}`);
 
       // 2. Upload Audio to Firebase
       const audioExt = audioFile.name.split('.').pop();
-      const audioRef = ref(storage, `${user.uid}/audio/${Date.now()}.${audioExt}`);
-      await uploadBytes(audioRef, audioFile);
-      const audioUrl = await getDownloadURL(audioRef);
+      const audioUrl = await uploadFileWithProgress(audioFile, `${user.uid}/audio/${Date.now()}.${audioExt}`);
 
       // 3. Save to Firestore
       await addDoc(collection(db, "releases"), {
         ...data,
+        title: data.songName,
+        artist: data.singerName,
         userId: user.uid,
         audioUrl,
         coverUrl,
@@ -202,13 +241,56 @@ export default function Upload() {
       setStep(8); // Finished
     } catch (err: any) {
       console.error(err);
-      alert(`Error uploading release: ${err.message || 'Please try again.'}`);
+      let errorMessage = "An unexpected error occurred during upload.";
+      if (err.code === 'storage/unauthorized') {
+        errorMessage = "Permission denied to Firebase Storage. Please ensure you are logged in and authorized.";
+      } else if (err.code === 'storage/quota-exceeded') {
+        errorMessage = "Storage quota exceeded on the server. Please try again later.";
+      } else if (err.code === 'storage/retry-limit-exceeded') {
+        errorMessage = "Upload timed out. Please check your internet connection.";
+      } else if (err.message) {
+        errorMessage = err.message;
+      }
+      alert(`Critical Upload Failure: ${errorMessage}`);
     } finally {
       setIsUploading(false);
+      setUploadProgress({ current: 0, total: 0, fileName: "" });
     }
   };
 
-  const nextStep = () => setStep(s => s + 1);
+  const nextStep = () => {
+    // Basic validation for current step
+    if (step === 1) {
+      const required = ["songName", "singerName", "lyricist", "composer", "producer", "copyright", "publisher", "lyrics"];
+      for (const field of required) {
+        if (!watchAll[field as keyof typeof watchAll]) {
+          alert(`Please fill the ${field.replace(/([A-Z])/g, ' $1').toLowerCase()} field.`);
+          return;
+        }
+      }
+    }
+    if (step === 2 && !watchAll.releaseDate) {
+      alert("Please select a release date.");
+      return;
+    }
+    if (step === 3 && !watchAll.labelName) {
+      alert("Please select a label.");
+      return;
+    }
+    if (step === 4 && !audioFile) {
+      alert("Please upload your master audio file.");
+      return;
+    }
+    if (step === 5 && !coverFile) {
+      alert("Please upload your artwork.");
+      return;
+    }
+    if (step === 6 && selectedPlatforms.length === 0) {
+      alert("Please select at least one distribution platform.");
+      return;
+    }
+    setStep(s => s + 1);
+  };
   const prevStep = () => setStep(s => s - 1);
 
   return (
@@ -236,21 +318,39 @@ export default function Upload() {
 
       <div className="bg-white rounded-[4rem] shadow-2xl p-16 border border-slate-50 relative overflow-hidden">
         {isUploading && (
-           <div className="absolute inset-0 bg-white/90 backdrop-blur-xl z-[100] flex flex-col items-center justify-center gap-8">
-              <div className="relative">
-                 <div className="w-24 h-24 border-4 border-brand-blue border-t-transparent rounded-full animate-spin"></div>
+           <div className="absolute inset-0 bg-white/95 backdrop-blur-2xl z-[100] flex flex-col items-center justify-center p-12 gap-10">
+              <div className="relative group">
+                 <motion.div 
+                   animate={{ rotate: 360 }} 
+                   transition={{ duration: 4, repeat: Infinity, ease: "linear" }}
+                   className="w-40 h-40 border-[6px] border-slate-100 border-t-brand-blue rounded-full shadow-2xl"
+                 ></motion.div>
                  <div className="absolute inset-0 flex items-center justify-center">
-                    <UploadIcon className="w-8 h-8 text-brand-blue" />
+                    <UploadIcon className="w-12 h-12 text-brand-blue animate-bounce" />
                  </div>
               </div>
-              <div className="text-center">
-                 <p className="font-display font-black text-3xl text-slate-800 tracking-tighter uppercase mb-2">Transmitting Audio Assets</p>
-                 <p className="text-slate-400 font-medium tracking-widest text-xs uppercase">Please do not refresh this mission control</p>
+
+              <div className="w-full max-w-md space-y-6">
+                 <div className="flex items-center justify-between text-[11px] font-black uppercase tracking-widest">
+                    <span className="text-slate-400">Transmitting: <span className="text-slate-800">{uploadProgress.fileName}</span></span>
+                    <span className="text-brand-blue">{Math.round(uploadProgress.current)}%</span>
+                 </div>
+                 <div className="h-4 bg-slate-100 rounded-full overflow-hidden p-1 shadow-inner">
+                    <motion.div 
+                      initial={{ width: 0 }}
+                      animate={{ width: `${uploadProgress.current}%` }}
+                      className="h-full bg-linear-to-r from-brand-blue to-cyan-400 rounded-full shadow-lg shadow-blue-500/20"
+                    />
+                 </div>
+                 <div className="text-center">
+                    <p className="font-display font-black text-3xl text-slate-800 tracking-tighter uppercase mb-2">Transmitting Audio Assets</p>
+                    <p className="text-slate-400 font-medium tracking-widest text-[10px] uppercase">Integrating Creative Data with Global Metadata Mesh</p>
+                 </div>
               </div>
            </div>
         )}
 
-        <form onSubmit={handleSubmit(onSubmit)}>
+        <form onSubmit={handleSubmit(onSubmit, onError)}>
           <AnimatePresence mode="wait">
              {/* STEP 1: RELEASE TYPE */}
              {step === 0 && (
@@ -549,8 +649,20 @@ export default function Upload() {
                            </div>
                         </button>
                       ))}
-                      <button type="button" className="p-8 rounded-[3.5rem] bg-brand-dark text-white flex flex-col items-center justify-center gap-2 group-hover:scale-105 transition-transform">
-                         <span className="text-xs font-black uppercase tracking-widest">Select All</span>
+                      <button 
+                        type="button" 
+                        onClick={() => {
+                          if (selectedPlatforms.length === PLATFORMS.length) {
+                            setSelectedPlatforms([]);
+                          } else {
+                            setSelectedPlatforms(PLATFORMS.map(p => p.name));
+                          }
+                        }}
+                        className="p-8 rounded-[3.5rem] bg-brand-dark text-white flex flex-col items-center justify-center gap-2 hover:scale-105 active:scale-95 transition-all group"
+                      >
+                         <span className="text-xs font-black uppercase tracking-widest">
+                           {selectedPlatforms.length === PLATFORMS.length ? "Deselect All" : "Select All"}
+                         </span>
                          <span className="text-[9px] font-bold text-white/40 uppercase">250+ Stores</span>
                       </button>
                    </div>
